@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 classwork.db
 uploads/
+.streamlit/secrets.toml
