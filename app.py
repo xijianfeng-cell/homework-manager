@@ -141,6 +141,160 @@ def change_password(user: dict) -> None:
                 st.session_state.user["password_hash"] = hashed
                 st.success("密码已修改")
 
+# def delete_notification(notification_id: int) -> None:
+#     supabase_client().table("notifications").delete().eq(
+#         "id", notification_id
+#     ).execute()
+
+
+# def admin_notifications() -> None:
+#     st.header("发布通知")
+#     st.caption(
+#         "通知会在所有学生首页的“通知”栏目中显示。"
+#         "重要通知仍建议将系统链接或截图发到班群。"
+#     )
+
+#     # 发布通知
+#     with st.form("publish_notification", clear_on_submit=True):
+#         title = st.text_input(
+#             "通知标题 *",
+#             placeholder="例如：明天课程调整"
+#         )
+#         content = st.text_area(
+#             "通知内容 *",
+#             placeholder="请写清具体事项、时间和地点"
+#         )
+#         ok = st.form_submit_button(
+#             "发布通知",
+#             use_container_width=True
+#         )
+
+#     if ok:
+#         if not title.strip() or not content.strip():
+#             st.error("请填写通知标题和内容")
+#         else:
+#             insert(
+#                 "notifications",
+#                 {
+#                     "title": title.strip(),
+#                     "content": content.strip(),
+#                     "created_at": now()
+#                 }
+#             )
+#             st.success("通知已发布。")
+#             st.rerun()
+
+#     # 已发布通知
+#     notices = rows("notifications", order="created_at", desc=True)
+
+#     if notices:
+#         st.subheader("已发布通知")
+
+#         st.dataframe(
+#             pd.DataFrame([
+#                 {
+#                     "标题": n["title"],
+#                     "内容": n["content"],
+#                     "发布时间": n["created_at"]
+#                 }
+#                 for n in notices
+#             ]),
+#             use_container_width=True,
+#             hide_index=True
+#         )
+
+#         # 删除通知
+#         st.subheader("删除通知")
+
+#         choices = {
+#             f"{n['title']}（{n['created_at']}）": n
+#             for n in notices
+#         }
+
+#         selected = choices[
+#             st.selectbox(
+#                 "选择要删除的通知",
+#                 list(choices),
+#                 key="delete_notification_select"
+#             )
+#         ]
+
+#         confirmed = st.checkbox(
+#             "我确认删除这条通知",
+#             key="delete_notification_confirm"
+#         )
+
+#         if st.button(
+#             "永久删除通知",
+#             type="primary",
+#             disabled=not confirmed
+#         ):
+#             delete_notification(selected["id"])
+#             st.success("通知已删除。")
+#             st.rerun()
+
+def admin_publish() -> None:
+    st.header("发布作业")
+    with st.form("publish", clear_on_submit=True):
+        subject = st.text_input("科目 *", placeholder="例如：高等数学")
+        title = st.text_input("作业标题 *", placeholder="例如：第三章习题")
+        requirements = st.text_area("作业要求 *", placeholder="写清题目范围、格式和提交说明")
+        deadline = st.datetime_input("截止时间 *", value=datetime.now())
+        ok = st.form_submit_button("发布作业", use_container_width=True)
+    if ok:
+        if not all([subject.strip(), title.strip(), requirements.strip()]):
+            st.error("请填写所有必填项")
+        else:
+            insert("assignments", {"subject": subject.strip(), "title": title.strip(), "requirements": requirements.strip(), "deadline": deadline.strftime("%Y-%m-%d %H:%M:%S"), "created_at": now()})
+            st.success("作业已发布。把系统链接发到班群即可。")
+    st.divider()
+    st.subheader("已发布作业")
+    assignments = rows("assignments", order="deadline", desc=True)
+    if not assignments:
+        st.caption("暂未发布作业。")
+        return
+    st.dataframe(pd.DataFrame([{"科目": a["subject"], "标题": a["title"], "截止时间": a["deadline"]} for a in assignments]), use_container_width=True, hide_index=True)
+    with st.expander("删除已发布作业"):
+        st.warning("删除后，该作业的全部提交记录和已上传文件也会一并删除，无法恢复。")
+        choices = {f"[{a['subject']}] {a['title']}（截止 {a['deadline']}）": a for a in assignments}
+        selected = choices[st.selectbox("选择要删除的作业", list(choices), key="delete_assignment_select")]
+        confirmed = st.checkbox("我确认删除此作业及其所有提交文件", key="delete_assignment_confirm")
+        if st.button("永久删除作业", type="primary", disabled=not confirmed):
+            delete_assignment(selected["id"])
+            st.success("作业及关联提交已删除。")
+            st.rerun()
+
+
+def remove_submission_files(submissions: list[dict]) -> None:
+    """删除 Supabase Storage 中的附件；空路径或已不存在的附件直接忽略。"""
+    paths = [submission["saved_path"] for submission in submissions if submission.get("saved_path")]
+    if paths:
+        supabase_client().storage.from_(STORAGE_BUCKET).remove(paths)
+
+
+def delete_assignment(assignment_id: int) -> None:
+    submitted = supabase_client().table("submissions").select("saved_path").eq("assignment_id", assignment_id).execute().data
+    remove_submission_files(submitted)
+    supabase_client().table("assignments").delete().eq("id", assignment_id).execute()
+
+
+# def admin_notifications() -> None:
+#     st.header("发布通知")
+#     st.caption("通知会在所有学生首页的“通知”栏目中显示。重要通知仍建议将系统链接或截图发到班群。")
+#     with st.form("publish_notification", clear_on_submit=True):
+#         title = st.text_input("通知标题 *", placeholder="例如：明天课程调整")
+#         content = st.text_area("通知内容 *", placeholder="请写清具体事项、时间和地点")
+#         ok = st.form_submit_button("发布通知", use_container_width=True)
+#     if ok:
+#         if not title.strip() or not content.strip():
+#             st.error("请填写通知标题和内容")
+#         else:
+#             insert("notifications", {"title": title.strip(), "content": content.strip(), "created_at": now()})
+#             st.success("通知已发布。")
+#     notices = rows("notifications", order="created_at", desc=True)
+#     if notices:
+#         st.subheader("已发布通知")
+#         st.dataframe(pd.DataFrame([{"标题": n["title"], "内容": n["content"], "发布时间": n["created_at"]} for n in notices]), use_container_width=True, hide_index=True)
 def delete_notification(notification_id: int) -> None:
     supabase_client().table("notifications").delete().eq(
         "id", notification_id
@@ -232,70 +386,6 @@ def admin_notifications() -> None:
             delete_notification(selected["id"])
             st.success("通知已删除。")
             st.rerun()
-
-# def admin_publish() -> None:
-#     st.header("发布作业")
-#     with st.form("publish", clear_on_submit=True):
-#         subject = st.text_input("科目 *", placeholder="例如：高等数学")
-#         title = st.text_input("作业标题 *", placeholder="例如：第三章习题")
-#         requirements = st.text_area("作业要求 *", placeholder="写清题目范围、格式和提交说明")
-#         deadline = st.datetime_input("截止时间 *", value=datetime.now())
-#         ok = st.form_submit_button("发布作业", use_container_width=True)
-#     if ok:
-#         if not all([subject.strip(), title.strip(), requirements.strip()]):
-#             st.error("请填写所有必填项")
-#         else:
-#             insert("assignments", {"subject": subject.strip(), "title": title.strip(), "requirements": requirements.strip(), "deadline": deadline.strftime("%Y-%m-%d %H:%M:%S"), "created_at": now()})
-#             st.success("作业已发布。把系统链接发到班群即可。")
-#     st.divider()
-#     st.subheader("已发布作业")
-#     assignments = rows("assignments", order="deadline", desc=True)
-#     if not assignments:
-#         st.caption("暂未发布作业。")
-#         return
-#     st.dataframe(pd.DataFrame([{"科目": a["subject"], "标题": a["title"], "截止时间": a["deadline"]} for a in assignments]), use_container_width=True, hide_index=True)
-#     with st.expander("删除已发布作业"):
-#         st.warning("删除后，该作业的全部提交记录和已上传文件也会一并删除，无法恢复。")
-#         choices = {f"[{a['subject']}] {a['title']}（截止 {a['deadline']}）": a for a in assignments}
-#         selected = choices[st.selectbox("选择要删除的作业", list(choices), key="delete_assignment_select")]
-#         confirmed = st.checkbox("我确认删除此作业及其所有提交文件", key="delete_assignment_confirm")
-#         if st.button("永久删除作业", type="primary", disabled=not confirmed):
-#             delete_assignment(selected["id"])
-#             st.success("作业及关联提交已删除。")
-#             st.rerun()
-
-
-def remove_submission_files(submissions: list[dict]) -> None:
-    """删除 Supabase Storage 中的附件；空路径或已不存在的附件直接忽略。"""
-    paths = [submission["saved_path"] for submission in submissions if submission.get("saved_path")]
-    if paths:
-        supabase_client().storage.from_(STORAGE_BUCKET).remove(paths)
-
-
-def delete_assignment(assignment_id: int) -> None:
-    submitted = supabase_client().table("submissions").select("saved_path").eq("assignment_id", assignment_id).execute().data
-    remove_submission_files(submitted)
-    supabase_client().table("assignments").delete().eq("id", assignment_id).execute()
-
-
-def admin_notifications() -> None:
-    st.header("发布通知")
-    st.caption("通知会在所有学生首页的“通知”栏目中显示。重要通知仍建议将系统链接或截图发到班群。")
-    with st.form("publish_notification", clear_on_submit=True):
-        title = st.text_input("通知标题 *", placeholder="例如：明天课程调整")
-        content = st.text_area("通知内容 *", placeholder="请写清具体事项、时间和地点")
-        ok = st.form_submit_button("发布通知", use_container_width=True)
-    if ok:
-        if not title.strip() or not content.strip():
-            st.error("请填写通知标题和内容")
-        else:
-            insert("notifications", {"title": title.strip(), "content": content.strip(), "created_at": now()})
-            st.success("通知已发布。")
-    notices = rows("notifications", order="created_at", desc=True)
-    if notices:
-        st.subheader("已发布通知")
-        st.dataframe(pd.DataFrame([{"标题": n["title"], "内容": n["content"], "发布时间": n["created_at"]} for n in notices]), use_container_width=True, hide_index=True)
-
 
 def admin_students() -> None:
     st.header("学生管理")
